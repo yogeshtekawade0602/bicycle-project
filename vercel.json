@@ -17,6 +17,8 @@
     }
   ],
   "env": {
-    "PYTHONPATH": "app"
+    "PYTHONPATH": "app",
+    "FLASK_ENV": "production",
+    "FLASK_DEBUG": "0"
   }
 } 
