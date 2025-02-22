@@ -9,14 +9,31 @@ import uuid
 # Load environment variables
 load_dotenv()
 
+# Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key")  # Added fallback
 
 # Initialize Supabase client
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_KEY")
-)
+try:
+    supabase = create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_KEY")
+    )
+except Exception as e:
+    print(f"Error initializing Supabase: {str(e)}")
+
+# Add health check endpoint
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
+# Error handler for 500 errors
+@app.errorhandler(500)
+def handle_500_error(error):
+    return jsonify({
+        "error": "Internal Server Error",
+        "message": str(error)
+    }), 500
 
 def generate_salt():
     return uuid.uuid4().hex
@@ -327,5 +344,7 @@ def delete_dweller(dweller_id):
         
     return redirect(url_for('list_dwellers'))
 
+# Modified app run configuration
 if __name__ == '__main__':
-    app.run()
+    port = int(os.getenv("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
