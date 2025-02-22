@@ -328,4 +328,4 @@ def delete_dweller(dweller_id):
     return redirect(url_for('list_dwellers'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
