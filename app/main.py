@@ -13,23 +13,45 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key")  # Added fallback
 
-# Initialize Supabase client
+# Add custom exception classes
+class SupabaseConnectionError(Exception):
+    pass
+
+class DwellerNotFoundError(Exception):
+    pass
+
+class InvalidDataError(Exception):
+    pass
+
+# Initialize Supabase client with better error handling
+def init_supabase():
+    try:
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        
+        if not url or not key:
+            raise SupabaseConnectionError("Missing Supabase credentials")
+            
+        return create_client(url, key)
+    except Exception as e:
+        raise SupabaseConnectionError(f"Failed to initialize Supabase: {str(e)}")
+
 try:
-    supabase = create_client(
-        os.getenv("SUPABASE_URL"),
-        os.getenv("SUPABASE_KEY")
-    )
-except Exception as e:
-    print(f"Error initializing Supabase: {str(e)}")
+    supabase = init_supabase()
+except SupabaseConnectionError as e:
+    print(f"Supabase initialization error: {str(e)}")
+    supabase = None
 
-# Add health check endpoint
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "healthy"}), 200
+# Add more comprehensive error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({
+        "error": "Not Found",
+        "message": "The requested resource was not found"
+    }), 404
 
-# Error handler for 500 errors
 @app.errorhandler(500)
-def handle_500_error(error):
+def internal_error(error):
     return jsonify({
         "error": "Internal Server Error",
         "message": str(error)
@@ -45,77 +67,114 @@ def hash_password(password, salt):
 @app.route('/dashboard')
 def list_dwellers():
     try:
+        if not supabase:
+            raise SupabaseConnectionError("Database connection not available")
+
         # Fetch active dwellers with all columns
         response = supabase.table('city_dwellers')\
             .select("*")\
             .eq('account_status', 'active')\
             .execute()
             
+        if not response:
+            raise DwellerNotFoundError("Failed to fetch dwellers data")
+            
         dwellers = response.data
         
-        # Format dates and ensure numeric values
+        # Format dates and ensure numeric values with error handling
         for dweller in dwellers:
-            if dweller.get('registration_date'):
-                dweller['registration_date'] = datetime.strptime(
-                    dweller['registration_date'], 
-                    '%Y-%m-%d'
-                ).strftime('%m/%d/%Y')
-            
-            if dweller.get('date_of_birth'):
-                dweller['date_of_birth'] = datetime.strptime(
-                    dweller['date_of_birth'], 
-                    '%Y-%m-%d'
-                ).strftime('%m/%d/%Y')
-            
-            # Ensure numeric values have defaults
-            dweller['credit_balance'] = float(dweller.get('credit_balance', 0))
-            dweller['rating'] = float(dweller.get('rating', 0))
-            
+            try:
+                if dweller.get('registration_date'):
+                    dweller['registration_date'] = datetime.strptime(
+                        dweller['registration_date'], 
+                        '%Y-%m-%d'
+                    ).strftime('%m/%d/%Y')
+                
+                if dweller.get('date_of_birth'):
+                    dweller['date_of_birth'] = datetime.strptime(
+                        dweller['date_of_birth'], 
+                        '%Y-%m-%d'
+                    ).strftime('%m/%d/%Y')
+                
+                # Ensure numeric values have defaults
+                dweller['credit_balance'] = float(dweller.get('credit_balance', 0))
+                dweller['rating'] = float(dweller.get('rating', 0))
+            except ValueError as e:
+                print(f"Error formatting dweller data: {str(e)}")
+                # Set default values if formatting fails
+                dweller['credit_balance'] = 0
+                dweller['rating'] = 0
+        
         return render_template('dashboard.html', dwellers=dwellers)
                              
+    except SupabaseConnectionError as e:
+        flash(f"Database connection error: {str(e)}", 'error')
+        return render_template('dashboard.html', dwellers=[])
+    except DwellerNotFoundError as e:
+        flash(f"Data retrieval error: {str(e)}", 'error')
+        return render_template('dashboard.html', dwellers=[])
     except Exception as e:
-        flash(f"Error: {str(e)}", 'error')
+        flash(f"Unexpected error: {str(e)}", 'error')
         return render_template('dashboard.html', dwellers=[])
 
 @app.route('/manage_dweller', methods=['POST'])
 def manage_dweller():
     try:
+        if not supabase:
+            raise SupabaseConnectionError("Database connection not available")
+
         action = request.form.get('action')
-        
+        if not action:
+            raise InvalidDataError("No action specified")
+
         if action == 'add_dweller':
-            # Generate salt and hash password
-            salt = generate_salt()
-            password = request.form['password']
-            password_hash = hash_password(password, salt)
-            
-            # Format dates
-            registration_date = datetime.strptime(
-                request.form['registration_date'], 
-                '%m/%d/%Y'
-            ).strftime('%Y-%m-%d')
-            
-            date_of_birth = datetime.strptime(
-                request.form['date_of_birth'], 
-                '%m/%d/%Y'
-            ).strftime('%Y-%m-%d')
-            
-            new_dweller = {
-                'first_name': request.form['first_name'],
-                'last_name': request.form['last_name'],
-                'email': request.form['email'],
-                'phone_number': request.form['phone_number'],
-                'date_of_birth': date_of_birth,
-                'address': request.form['address'],
-                'registration_date': registration_date,
-                'password_hash': password_hash,
-                'salt': salt,
-                'preferred_language': request.form.get('preferred_language', 'en'),
-                'verification_code': str(uuid.uuid4().hex[:6].upper())
-            }
-            
-            supabase.table('city_dwellers').insert(new_dweller).execute()
-            flash('City dweller added successfully!', 'success')
-            
+            try:
+                # Validate required fields
+                required_fields = ['first_name', 'last_name', 'email', 'password', 
+                                 'registration_date', 'date_of_birth']
+                for field in required_fields:
+                    if not request.form.get(field):
+                        raise InvalidDataError(f"Missing required field: {field}")
+
+                # Generate salt and hash password
+                salt = generate_salt()
+                password = request.form['password']
+                password_hash = hash_password(password, salt)
+                
+                # Format dates with validation
+                try:
+                    registration_date = datetime.strptime(
+                        request.form['registration_date'], 
+                        '%m/%d/%Y'
+                    ).strftime('%Y-%m-%d')
+                    
+                    date_of_birth = datetime.strptime(
+                        request.form['date_of_birth'], 
+                        '%m/%d/%Y'
+                    ).strftime('%Y-%m-%d')
+                except ValueError:
+                    raise InvalidDataError("Invalid date format. Use MM/DD/YYYY")
+
+                new_dweller = {
+                    'first_name': request.form['first_name'],
+                    'last_name': request.form['last_name'],
+                    'email': request.form['email'],
+                    'phone_number': request.form['phone_number'],
+                    'date_of_birth': date_of_birth,
+                    'address': request.form['address'],
+                    'registration_date': registration_date,
+                    'password_hash': password_hash,
+                    'salt': salt,
+                    'preferred_language': request.form.get('preferred_language', 'en'),
+                    'verification_code': str(uuid.uuid4().hex[:6].upper())
+                }
+                
+                supabase.table('city_dwellers').insert(new_dweller).execute()
+                flash('City dweller added successfully!', 'success')
+                
+            except ValueError as e:
+                raise InvalidDataError(f"Invalid data format: {str(e)}")
+
         elif action == 'edit_dweller':
             # Get the user_id
             user_id = request.form.get('user_id')
@@ -172,8 +231,13 @@ def manage_dweller():
                 .execute()
             flash('City dweller removed successfully!', 'success')
             
+    except SupabaseConnectionError as e:
+        flash(f"Database connection error: {str(e)}", 'error')
+    except InvalidDataError as e:
+        flash(f"Invalid data: {str(e)}", 'error')
     except Exception as e:
-        flash(f"Error: {str(e)}", 'error')
+        flash(f"Unexpected error: {str(e)}", 'error')
+        print(f"Error in manage_dweller: {str(e)}")  # Log the full error
         
     return redirect(url_for('list_dwellers'))
 
@@ -343,6 +407,16 @@ def delete_dweller(dweller_id):
         flash(f"Error: {str(e)}", 'error')
         
     return redirect(url_for('list_dwellers'))
+
+# Health check endpoint with database connection status
+@app.route('/health')
+def health_check():
+    status = {
+        "status": "healthy" if supabase else "degraded",
+        "database": "connected" if supabase else "disconnected",
+        "timestamp": datetime.now().isoformat()
+    }
+    return jsonify(status), 200 if supabase else 503
 
 # Modified app run configuration
 if __name__ == '__main__':
