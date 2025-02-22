@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}View City Dwellers{% endblock %}
+
+{% block content %}
+<h2>City Dwellers List</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Registration Date</th>
+            <th>Rental Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for dweller in dwellers %}
+        <tr>
+            <td>{{ dweller.first_name }} {{ dweller.last_name }}</td>
+            <td>{{ dweller.email }}</td>
+            <td>{{ dweller.phone }}</td>
+            <td>{{ dweller.registration_date }}</td>
+            <td>
+                {% set active_rental = none %}
+                {% for rental in dweller.rentals %}
+                    {% if rental.status == 'active' %}
+                        {% set active_rental = rental %}
+                    {% endif %}
+                {% endfor %}
+
+                {% if active_rental %}
+                    <span class="badge bg-success">
+                        Active Rental - Bike #{{ active_rental.bicycles.bike_number }}
+                    </span>
+                    <form action="{{ url_for('manage_rental', dweller_id=dweller.id) }}" 
+                          method="POST" class="mt-2">
+                        <input type="hidden" name="action" value="end">
+                        <input type="hidden" name="lat" id="end_lat_{{ dweller.id }}">
+                        <input type="hidden" name="lng" id="end_lng_{{ dweller.id }}">
+                        <button type="button" class="btn btn-warning btn-sm" 
+                                onclick="endRental('{{ dweller.id }}')">
+                            End Rental
+                        </button>
+                    </form>
+                {% else %}
+                    <span class="badge bg-secondary">No Active Rental</span>
+                    <form action="{{ url_for('manage_rental', dweller_id=dweller.id) }}" 
+                          method="POST" class="mt-2">
+                        <input type="hidden" name="action" value="start">
+                        <input type="hidden" name="lat" id="start_lat_{{ dweller.id }}">
+                        <input type="hidden" name="lng" id="start_lng_{{ dweller.id }}">
+                        <select name="bike_id" class="form-select form-select-sm mb-2" required>
+                            <option value="">Select Bicycle</option>
+                            {% for bike in available_bikes %}
+                                <option value="{{ bike.id }}">Bike #{{ bike.bike_number }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-success btn-sm" 
+                                onclick="startRental('{{ dweller.id }}')">
+                            Start Rental
+                        </button>
+                    </form>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{{ url_for('edit_dweller', dweller_id=dweller.id) }}" 
+                   class="btn btn-primary btn-sm">Edit</a>
+                <form action="{{ url_for('delete_dweller', dweller_id=dweller.id) }}" 
+                      method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger btn-sm" 
+                            onclick="return confirm('Are you sure you want to remove this city dweller?')">
+                        Remove
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{{ url_for('add_dweller') }}" class="btn btn-primary">Add New Dweller</a>
+
+<script>
+function getLocation(callback) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            position => callback(position.coords.latitude, position.coords.longitude),
+            error => {
+                console.error("Error getting location:", error);
+                alert("Could not get location. Please enable location services.");
+            }
+        );
+    } else {
+        alert("Geolocation is not supported by this browser.");
+    }
+}
+
+function startRental(dwellerId) {
+    getLocation((lat, lng) => {
+        document.getElementById(`start_lat_${dwellerId}`).value = lat;
+        document.getElementById(`start_lng_${dwellerId}`).value = lng;
+        document.getElementById(`start_lat_${dwellerId}`).closest('form').submit();
+    });
+}
+
+function endRental(dwellerId) {
+    getLocation((lat, lng) => {
+        document.getElementById(`end_lat_${dwellerId}`).value = lat;
+        document.getElementById(`end_lng_${dwellerId}`).value = lng;
+        document.getElementById(`end_lat_${dwellerId}`).closest('form').submit();
+    });
+}
+</script>
+{% endblock %} 

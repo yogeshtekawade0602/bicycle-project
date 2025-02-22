@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}City Dwellers Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Add New Dweller Button -->
+    <div class="mb-4">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDwellerModal">
+            Add New City Dweller
+        </button>
+    </div>
+
+    <!-- City Dwellers Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>City Dwellers</h4>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Address</th>
+                            <th>Status</th>
+                            <th>Credit Balance</th>
+                            <th>Rating</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dweller in dwellers %}
+                        <tr>
+                            <td>{{ dweller.first_name }} {{ dweller.last_name }}</td>
+                            <td>{{ dweller.email }}</td>
+                            <td>{{ dweller.phone_number }}</td>
+                            <td>{{ dweller.address }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if dweller.verification_status == 'verified' 
+                                                        else 'warning' if dweller.verification_status == 'pending' 
+                                                        else 'danger' }}">
+                                    {{ dweller.verification_status|default('Pending')|title }}
+                                </span>
+                            </td>
+                            <td>${{ "%.2f"|format(dweller.credit_balance|default(0)|float) }}</td>
+                            <td>{{ "%.1f"|format(dweller.rating|default(0)|float) }}/5.0</td>
+                            <td>
+                                <button class="btn btn-primary btn-sm" 
+                                        onclick='editDweller({{ dweller|tojson|safe }})'>
+                                    Edit
+                                </button>
+                                <form action="{{ url_for('manage_dweller') }}" method="POST" style="display: inline;">
+                                    <input type="hidden" name="action" value="delete_dweller">
+                                    <input type="hidden" name="user_id" value="{{ dweller.user_id }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" 
+                                            onclick="return confirm('Are you sure?')">
+                                        Remove
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Dweller Modal -->
+<div class="modal fade" id="addDwellerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New City Dweller</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('manage_dweller') }}" method="POST">
+                    <input type="hidden" name="action" value="add_dweller">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">First Name</label>
+                            <input type="text" class="form-control" name="first_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Last Name</label>
+                            <input type="text" class="form-control" name="last_name" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" name="phone_number" 
+                                   pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}" placeholder="123-456-7890">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Address</label>
+                        <textarea class="form-control" name="address" rows="2"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Date of Birth</label>
+                            <input type="text" class="form-control" name="date_of_birth" 
+                                   placeholder="MM/DD/YYYY" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Registration Date</label>
+                            <input type="text" class="form-control" name="registration_date" 
+                                   placeholder="MM/DD/YYYY" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Preferred Language</label>
+                            <select class="form-select" name="preferred_language">
+                                <option value="en">English</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Dweller</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Dweller Modal -->
+<div class="modal fade" id="editDwellerModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit City Dweller</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('manage_dweller') }}" method="POST">
+                    <input type="hidden" name="action" value="edit_dweller">
+                    <input type="hidden" name="user_id" id="edit_user_id">
+                    
+                    <!-- Basic Information -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">First Name</label>
+                            <input type="text" class="form-control" name="first_name" id="edit_first_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Last Name</label>
+                            <input type="text" class="form-control" name="last_name" id="edit_last_name" required>
+                        </div>
+                    </div>
+
+                    <!-- Contact Information -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" id="edit_email" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" name="phone_number" id="edit_phone_number">
+                        </div>
+                    </div>
+
+                    <!-- Status and Ratings -->
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Verification Status</label>
+                            <select class="form-select" name="verification_status" id="edit_verification_status">
+                                <option value="pending">Pending</option>
+                                <option value="verified">Verified</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Credit Balance</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" min="0" class="form-control" 
+                                       name="credit_balance" id="edit_credit_balance" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Rating</label>
+                            <input type="number" step="0.1" min="0" max="5" class="form-control" 
+                                   name="rating" id="edit_rating" required>
+                        </div>
+                    </div>
+
+                    <!-- Other Information -->
+                    <div class="mb-3">
+                        <label class="form-label">Address</label>
+                        <textarea class="form-control" name="address" id="edit_address" rows="2"></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Date of Birth</label>
+                            <input type="text" class="form-control" name="date_of_birth" 
+                                   id="edit_date_of_birth" placeholder="MM/DD/YYYY" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Registration Date</label>
+                            <input type="text" class="form-control" name="registration_date" 
+                                   id="edit_registration_date" placeholder="MM/DD/YYYY" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Update Dweller</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function editDweller(dweller) {
+    console.log('Editing dweller:', dweller); // Debug line
+    
+    // Basic Information
+    document.getElementById('edit_user_id').value = dweller.user_id;
+    document.getElementById('edit_first_name').value = dweller.first_name || '';
+    document.getElementById('edit_last_name').value = dweller.last_name || '';
+    document.getElementById('edit_email').value = dweller.email || '';
+    document.getElementById('edit_phone_number').value = dweller.phone_number || '';
+    document.getElementById('edit_address').value = dweller.address || '';
+    
+    // Dates
+    document.getElementById('edit_date_of_birth').value = dweller.date_of_birth || '';
+    document.getElementById('edit_registration_date').value = dweller.registration_date || '';
+    
+    // Status and Ratings
+    document.getElementById('edit_verification_status').value = dweller.verification_status || 'pending';
+    document.getElementById('edit_credit_balance').value = dweller.credit_balance || '0.00';
+    document.getElementById('edit_rating').value = dweller.rating || '0.0';
+    
+    // Show the modal
+    new bootstrap.Modal(document.getElementById('editDwellerModal')).show();
+}
+</script>
+{% endblock %} 

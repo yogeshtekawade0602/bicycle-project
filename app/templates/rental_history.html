@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Rental History{% endblock %}
+
+{% block content %}
+<h2>Rental History</h2>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Statistics</h5>
+        <div class="row">
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Total Distance:</strong> {{ total_distance }} km</p>
+            </div>
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Total Time:</strong> {{ total_duration }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Bicycle</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Duration</th>
+                <th>Distance</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rental in rentals %}
+            <tr>
+                <td>Bike #{{ rental.bicycles.bike_number }}</td>
+                <td>{{ rental.start_time|datetime }}</td>
+                <td>{{ rental.end_time|datetime if rental.end_time else 'Active' }}</td>
+                <td>{{ rental.duration if rental.duration else 'N/A' }}</td>
+                <td>{{ rental.distance|round(2) if rental.distance else 'N/A' }} km</td>
+                <td>
+                    <span class="badge bg-{{ 'success' if rental.status == 'active' else 'secondary' }}">
+                        {{ rental.status|title }}
+                    </span>
+                </td>
+                <td>
+                    {% if rental.status == 'active' %}
+                    <button class="btn btn-sm btn-info" 
+                            onclick="trackBicycle('{{ rental.id }}')">
+                        Track
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Tracking Modal -->
+<div class="modal fade" id="trackingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bicycle Tracking</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="map" style="height: 300px;"></div>
+                <div id="nearbyLocations" class="mt-3">
+                    <h6>Nearby Tourist Locations:</h6>
+                    <ul class="list-group" id="locationsList"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add this to your existing JavaScript -->
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
+<script>
+let map;
+let marker;
+let trackingInterval;
+
+function trackBicycle(rentalId) {
+    const modal = new bootstrap.Modal(document.getElementById('trackingModal'));
+    modal.show();
+    
+    // Initialize map
+    map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15
+    });
+    
+    // Start tracking
+    updateBicycleLocation();
+    trackingInterval = setInterval(() => updateBicycleLocation(rentalId), 10000);
+    
+    // Clear interval when modal is closed
+    document.getElementById('trackingModal').addEventListener('hidden.bs.modal', () => {
+        clearInterval(trackingInterval);
+    });
+}
+
+function updateBicycleLocation(rentalId) {
+    fetch(`/track_bicycle/${rentalId}`)
+        .then(response => response.json())
+        .then(data => {
+            const position = {
+                lat: data.bicycle.latitude,
+                lng: data.bicycle.longitude
+            };
+            
+            // Update map
+            map.setCenter(position);
+            if (!marker) {
+                marker = new google.maps.Marker({
+                    position: position,
+                    map: map,
+                    title: `Bike #${data.bicycle.bike_number}`
+                });
+            } else {
+                marker.setPosition(position);
+            }
+            
+            // Update nearby locations
+            const locationsList = document.getElementById('locationsList');
+            locationsList.innerHTML = '';
+            data.nearby_locations.forEach(location => {
+                locationsList.innerHTML += `
+                    <li class="list-group-item">
+                        <h6>${location.name}</h6>
+                        <p class="mb-1">${location.description}</p>
+                        <small class="text-muted">Distance: ${location.distance}m</small>
+                    </li>
+                `;
+            });
+        })
+        .catch(error => console.error('Error:', error));
+}
+</script>
+{% endblock %} 
