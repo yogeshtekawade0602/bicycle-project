@@ -32,6 +32,13 @@ def get_supabase():
         logger.error(f"Failed to initialize Supabase: {str(e)}")
         return None
 
+def format_date_for_form(date_str):
+    """Convert date string to form-compatible format"""
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except:
+        return ''
+
 # Health check endpoint
 @app.route('/health')
 def health_check():
@@ -69,7 +76,6 @@ def list_dwellers():
         if not db:
             raise Exception("Database connection not available")
 
-        # Fetch active dwellers
         response = db.table('city_dwellers')\
             .select("*")\
             .eq('account_status', 'active')\
@@ -77,17 +83,18 @@ def list_dwellers():
             
         dwellers = response.data if response else []
         
-        # Format dates and ensure numeric values
         for dweller in dwellers:
             try:
+                # Format dates for display
                 for date_field in ['registration_date', 'date_of_birth']:
                     if dweller.get(date_field):
-                        dweller[date_field] = datetime.strptime(
+                        # Store both display and form formats
+                        dweller[f'{date_field}_display'] = datetime.strptime(
                             dweller[date_field], 
                             '%Y-%m-%d'
                         ).strftime('%m/%d/%Y')
+                        dweller[date_field] = format_date_for_form(dweller[date_field])
                 
-                # Ensure numeric values have defaults
                 dweller['credit_balance'] = float(dweller.get('credit_balance', 0))
                 dweller['rating'] = float(dweller.get('rating', 0))
             except ValueError as e:
